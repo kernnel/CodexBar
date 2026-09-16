@@ -68,7 +68,7 @@ struct UsageStoreCodexCostCatchUpTests {
     }
 
     @Test(arguments: [CodexCostCatchUpMode.automatic, .accelerated])
-    func `app low power preference reaches successive catch-up passes`(mode: CodexCostCatchUpMode) async throws {
+    func `app low power preference survives current window priority`(mode: CodexCostCatchUpMode) async throws {
         let store = try Self.makeStore(suite: "app-low-power-worker")
         store.settings.backgroundWorkLowPowerModePreference = .on
         var sleeps: [TimeInterval] = []
@@ -79,9 +79,7 @@ struct UsageStoreCodexCostCatchUpTests {
         store._test_codexCostCatchUpAdvanceOverride = { _, _, _ in
             CostUsageFetcher.CodexScanCatchUpStatus(pending: true, progressKey: "progressed")
         }
-        store._test_cachedCodexTokenSnapshotLoaderOverride = { now, _, _ in
-            (Self.tokenSnapshot(cost: 1, now: now), now, nil)
-        }
+        store._test_cachedCodexTokenSnapshotLoaderOverride = { _, _, _ in nil }
         store._test_codexCostCatchUpSleepOverride = { delay in
             sleeps.append(delay)
             if sleeps.count == 2 { throw CancellationError() }
@@ -91,7 +89,7 @@ struct UsageStoreCodexCostCatchUpTests {
         await task.value
         #expect(sleeps.count == 2)
         if mode == .automatic {
-            #expect(sleeps == [0, 1800])
+            #expect(sleeps == [1800, 1800])
         } else {
             #expect(sleeps == [0, 0])
         }

@@ -152,7 +152,9 @@ extension UsageStore {
                             context: context,
                             phase: .indexing)
                         try await self.sleepBetweenCodexCostCatchUpPasses(
-                            seconds: publishedCurrentWindow ? delay : 0)
+                            seconds: publishedCurrentWindow || self.settings.backgroundWorkLowPowerModeEnabled
+                                ? delay
+                                : 0)
                     }
 
                     try Task.checkCancellation()
