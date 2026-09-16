@@ -322,6 +322,7 @@ struct UsageStoreCodexCostCatchUpTests {
         store._test_tokenUsageSnapshotLoaderOverride = { _, _, now, _, _ in
             Self.tokenSnapshot(cost: 1, now: now)
         }
+        store._test_cachedCodexTokenSnapshotLoaderOverride = { _, _, _ in nil }
         store._test_codexCostCatchUpStatusOverride = { _ in
             statusLoadCount += 1
             return CostUsageFetcher.CodexScanCatchUpStatus(
