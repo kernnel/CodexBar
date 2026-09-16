@@ -21,5 +21,8 @@ jobs:
             fi
           done
           xcodebuild -version
-      - name: Verify current-window catch-up
-        run: swift test --filter UsageStoreCodexCostCatchUpTests
+      - name: Run full test suite
+        run: make test
+      - name: Run repository checks
+        if: ${{ always() }}
+        run: make check
