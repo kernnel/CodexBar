@@ -21,13 +21,5 @@ jobs:
             fi
           done
           xcodebuild -version
-      - name: Package app
-        run: CODEXBAR_SIGNING=adhoc ARCHES=arm64 ./Scripts/package_app.sh release
-      - name: Archive app
-        run: ditto -c -k --keepParent CodexBar.app CodexBar-PR3669.app.zip
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: CodexBar-PR3669
-          path: CodexBar-PR3669.app.zip
       - name: Verify current-window catch-up
         run: swift test --filter UsageStoreCodexCostCatchUpTests
