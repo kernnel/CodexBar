@@ -20,6 +20,9 @@ struct UsageStoreCodexCostCatchUpTests {
             try await Task.sleep(for: .milliseconds(20))
             return .init(pending: true, progressKey: "progressed")
         }
+        store._test_cachedCodexTokenSnapshotLoaderOverride = { now, _, _ in
+            (Self.tokenSnapshot(cost: 1, now: now), now, nil)
+        }
         store._test_codexCostCatchUpSleepOverride = { delay in
             sleeps.append(delay)
             if sleeps.count == 2 { throw CancellationError() }
@@ -27,7 +30,7 @@ struct UsageStoreCodexCostCatchUpTests {
         store.startCodexCostCatchUpIfNeeded()
         let task = try #require(store.codexCostCatchUpTask)
         await task.value
-        #expect(sleeps == [1998, 1998])
+        #expect(sleeps == [0, 1998])
     }
 
     @Test(arguments: [CodexCostCatchUpPowerSource.ac, .battery, .unknown])
@@ -76,6 +79,9 @@ struct UsageStoreCodexCostCatchUpTests {
         store._test_codexCostCatchUpAdvanceOverride = { _, _, _ in
             CostUsageFetcher.CodexScanCatchUpStatus(pending: true, progressKey: "progressed")
         }
+        store._test_cachedCodexTokenSnapshotLoaderOverride = { now, _, _ in
+            (Self.tokenSnapshot(cost: 1, now: now), now, nil)
+        }
         store._test_codexCostCatchUpSleepOverride = { delay in
             sleeps.append(delay)
             if sleeps.count == 2 { throw CancellationError() }
@@ -85,7 +91,7 @@ struct UsageStoreCodexCostCatchUpTests {
         await task.value
         #expect(sleeps.count == 2)
         if mode == .automatic {
-            #expect(sleeps.allSatisfy { $0 >= 1800 })
+            #expect(sleeps == [0, 1800])
         } else {
             #expect(sleeps == [0, 0])
         }
@@ -162,13 +168,14 @@ struct UsageStoreCodexCostCatchUpTests {
     }
 
     @Test
-    func `bounded catch-up automatically publishes only the final stable snapshot`() async throws {
+    func `bounded catch-up publishes current window before historical completion`() async throws {
         let store = try Self.makeStore(suite: "publishes-final")
         var snapshotLoadCount = 0
         var cachedLoadCount = 0
         var statusLoadCount = 0
         var advanceCount = 0
         var sleepDurations: [TimeInterval] = []
+        store._test_codexCostCatchUpActiveDuration = 2
         store._test_tokenUsageSnapshotLoaderOverride = { _, _, now, _, _ in
             snapshotLoadCount += 1
             return Self.tokenSnapshot(cost: Double(snapshotLoadCount), now: now)
@@ -180,11 +187,14 @@ struct UsageStoreCodexCostCatchUpTests {
         store._test_codexCostCatchUpStatusOverride = { _ in
             statusLoadCount += 1
             return CostUsageFetcher.CodexScanCatchUpStatus(
-                pending: statusLoadCount == 1,
+                pending: advanceCount < 2,
                 progressKey: "status-\(statusLoadCount)")
         }
         store._test_codexCostCatchUpAdvanceOverride = { _, _, _ in
             advanceCount += 1
+            if advanceCount == 2 {
+                #expect(store.tokenSnapshot(for: .codex)?.last30DaysCostUSD == 2)
+            }
             return CostUsageFetcher.CodexScanCatchUpStatus(
                 pending: advanceCount < 2,
                 progressKey: "advance-\(advanceCount)")
@@ -199,16 +209,16 @@ struct UsageStoreCodexCostCatchUpTests {
 
         await store.refreshTokenUsage(.codex, force: true)
         await Self.waitUntil {
-            store.codexCostCatchUpTask == nil && cachedLoadCount == 1
+            store.codexCostCatchUpTask == nil && cachedLoadCount == 2
         }
 
         #expect(advanceCount == 2)
-        #expect(statusLoadCount == 2)
+        #expect(statusLoadCount == 3)
         #expect(snapshotLoadCount == 1)
-        #expect(cachedLoadCount == 1)
-        #expect(sleepDurations.first == 1998)
+        #expect(cachedLoadCount == 2)
+        #expect(sleepDurations == [0, 1998])
         #expect(store.tokenSnapshot(for: .codex)?.last30DaysCostUSD == 2)
-        #expect(store.tokenSnapshotPublicationRevision(for: .codex) == 2)
+        #expect(store.tokenSnapshotPublicationRevision(for: .codex) == 3)
         #expect(store.tokenError(for: .codex) == nil)
     }
 

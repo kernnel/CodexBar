@@ -118,6 +118,7 @@ extension UsageStore {
                 context: context,
                 phase: status.pending ? .indexing : .complete)
             var didAdvance = false
+            var publishedCurrentWindow = false
             var (previousActiveDuration, seenProgressKeys): (TimeInterval?, Set<String>) =
                 (nil, [status.progressKey])
             while status.pending {
@@ -150,7 +151,8 @@ extension UsageStore {
                             status: status,
                             context: context,
                             phase: .indexing)
-                        try await self.sleepBetweenCodexCostCatchUpPasses(seconds: delay)
+                        try await self.sleepBetweenCodexCostCatchUpPasses(
+                            seconds: publishedCurrentWindow ? delay : 0)
                     }
 
                     try Task.checkCancellation()
@@ -203,6 +205,12 @@ extension UsageStore {
                         return
                     }
                     status = nextStatus
+                    if status.pending, !publishedCurrentWindow,
+                       let publishedStatus = try await self.publishAvailableCodexCostCatchUpSnapshot(context: context)
+                    {
+                        publishedCurrentWindow = true
+                        status = publishedStatus
+                    }
                 } catch is CancellationError {
                     return
                 } catch {
@@ -246,6 +254,15 @@ extension UsageStore {
     private func publishStableCodexCostCatchUpSnapshot(
         context: CodexCostCatchUpContext) async throws -> CostUsageFetcher.CodexScanCatchUpStatus
     {
+        guard let status = try await self.publishAvailableCodexCostCatchUpSnapshot(context: context) else {
+            throw CodexCostCatchUpPublicationError.completedHistoryUnavailable
+        }
+        return status
+    }
+
+    private func publishAvailableCodexCostCatchUpSnapshot(
+        context: CodexCostCatchUpContext) async throws -> CostUsageFetcher.CodexScanCatchUpStatus?
+    {
         let now = Date()
         // Provider-specific by design: Codex owns resumable cost catch-up and this guarded completed-cache publication.
         let publicationRevision = self.tokenSnapshotPublicationRevision(for: .codex)
@@ -261,7 +278,7 @@ extension UsageStore {
         guard let result,
               result.snapshot.historyCoverageIsEstablished,
               result.staleSnapshotUpdatedAt == nil
-        else { throw CodexCostCatchUpPublicationError.completedHistoryUnavailable }
+        else { return nil }
         let snapshot = result.snapshot
 
         if let lastRefreshAt = result.lastRefreshAt {
