@@ -1,0 +1,25 @@
+name: PR 3669 baseline layout repro
+
+on:
+  push:
+    branches: [ci/pr3669-baseline-repro]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select Xcode 26
+        run: |
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "$candidate/Contents/Developer"
+              break
+            fi
+          done
+          xcodebuild -version
+      - name: Reproduce unrelated baseline layout test
+        run: make test-fast FILTER=CostHistoryChartMenuViewTests
