@@ -173,10 +173,11 @@ extension CostUsageStoreReadWorkTests {
         #expect(await fixture.cachedSnapshot(details: true)?.snapshot.updatedAt == fixture.now)
     }
 
-    @Test(arguments: [false, true])
+    @Test(arguments: [(false, false), (false, true), (true, false)])
     func `completed current window publishes while historical catch up continues`(
-        pendingCurrentWindow: Bool) async throws
+        scenario: (Bool, Bool)) async throws
     {
+        let (pendingCurrentWindow, staleParser) = scenario
         let fixture = try ReadWorkFixture(fileCount: 2, rowsPerFile: 4)
         defer { fixture.remove() }
         var cache = fixture.canonical
@@ -208,10 +209,14 @@ extension CostUsageStoreReadWorkTests {
             cache: fixture.canonical,
             reportSinceKey: fixture.range.sinceKey,
             reportUntilKey: fixture.range.untilKey)
+        let pendingPath = pendingCurrentWindow ? currentPath : historicalPath
+        if staleParser {
+            cache.files[pendingPath]?.codexParserRevision = nil
+        }
         cache.codexActiveLookbackState = CostUsageCodexActiveLookbackState(
             scanSinceKey: fixture.range.scanSinceKey,
             rootPaths: roots,
-            pendingFilePaths: [pendingCurrentWindow ? currentPath : historicalPath],
+            pendingFilePaths: [pendingPath],
             legacyRecursivePendingRootPaths: roots,
             completedCurrentWindowRootPaths: roots,
             completedCurrentWindowFlatRootPaths: roots,
@@ -223,8 +228,8 @@ extension CostUsageStoreReadWorkTests {
 
         #expect(status.pending)
         #expect(cached.snapshot.historyCoverageIsEstablished)
-        #expect(cached.snapshot.last30DaysTokens == (pendingCurrentWindow ? 13 : 52))
-        #expect((cached.staleSnapshotUpdatedAt != nil) == pendingCurrentWindow)
+        #expect(cached.snapshot.last30DaysTokens == (pendingCurrentWindow || staleParser ? 13 : 52))
+        #expect((cached.staleSnapshotUpdatedAt != nil) == (pendingCurrentWindow || staleParser))
     }
 
     @Test

@@ -81,6 +81,7 @@ struct CostUsageStoreReadView: Sendable {
         for path in lookback.pendingFilePaths {
             let resolvedPath = Self.resolvedCodexPath(URL(fileURLWithPath: path))
             guard let usage = filesByResolvedPath[resolvedPath] else { return false }
+            guard usage.hasCurrentCodexParser else { return false }
             if usage.touchesCodexScanWindow(
                 sinceKey: range.scanSinceKey,
                 untilKey: range.scanUntilKey,
