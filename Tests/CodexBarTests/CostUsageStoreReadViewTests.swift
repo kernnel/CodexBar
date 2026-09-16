@@ -173,6 +173,60 @@ extension CostUsageStoreReadWorkTests {
         #expect(await fixture.cachedSnapshot(details: true)?.snapshot.updatedAt == fixture.now)
     }
 
+    @Test(arguments: [false, true])
+    func `completed current window publishes while historical catch up continues`(
+        pendingCurrentWindow: Bool) async throws
+    {
+        let fixture = try ReadWorkFixture(fileCount: 2, rowsPerFile: 4)
+        defer { fixture.remove() }
+        var cache = fixture.canonical
+        let paths = cache.files.keys.sorted()
+        let currentPath = try #require(paths.first)
+        let historicalPath = try #require(paths.last)
+        let historicalDay = "2026-06-01"
+        cache.files[historicalPath]?.days = [historicalDay: [ReadWorkFixture.model: [40, 8, 12]]]
+        cache.files[historicalPath]?.codexRows = nil
+        cache.files[historicalPath]?.codexStandardTokens = [historicalDay: [ReadWorkFixture.model: 52]]
+        cache.days = [:]
+        for usage in cache.files.values {
+            CostUsageScanner.applyFileDays(cache: &cache, fileDays: usage.days, sign: 1)
+        }
+
+        let roots = CostUsageScanner.codexSessionsRoots(options: fixture.options)
+            .map { $0.resolvingSymlinksInPath().standardizedFileURL.path }.sorted()
+        let previousReport = CostUsageDailyReport(data: [.init(
+            date: ReadWorkFixture.day,
+            inputTokens: 10,
+            outputTokens: 3,
+            totalTokens: 13,
+            costUSD: nil,
+            modelsUsed: [ReadWorkFixture.model],
+            modelBreakdowns: nil)], summary: nil)
+        cache.codexScanCatchUpPending = true
+        cache.codexPreviousReport = CostUsageCodexPreviousReport(
+            report: previousReport,
+            cache: fixture.canonical,
+            reportSinceKey: fixture.range.sinceKey,
+            reportUntilKey: fixture.range.untilKey)
+        cache.codexActiveLookbackState = CostUsageCodexActiveLookbackState(
+            scanSinceKey: fixture.range.scanSinceKey,
+            rootPaths: roots,
+            pendingFilePaths: [pendingCurrentWindow ? currentPath : historicalPath],
+            legacyRecursivePendingRootPaths: roots,
+            completedCurrentWindowRootPaths: roots,
+            completedCurrentWindowFlatRootPaths: roots,
+            cacheWideMigrationQueueActive: true)
+        CostUsageStoreAccess.replace(cacheRoot: fixture.env.cacheRoot, cache: cache, calendar: fixture.calendar)
+
+        let status = await CostUsageFetcher(scannerOptions: fixture.options).codexScanCatchUpStatus()
+        let cached = try #require(await fixture.cachedSnapshot())
+
+        #expect(status.pending)
+        #expect(cached.snapshot.historyCoverageIsEstablished)
+        #expect(cached.snapshot.last30DaysTokens == (pendingCurrentWindow ? 13 : 52))
+        #expect((cached.staleSnapshotUpdatedAt != nil) == pendingCurrentWindow)
+    }
+
     @Test
     func `default details preserve mixed authoritative and estimated row pricing`() async throws {
         let fixture = try ReadWorkFixture(fileCount: 2, rowsPerFile: 4)
