@@ -173,11 +173,17 @@ extension CostUsageStoreReadWorkTests {
         #expect(await fixture.cachedSnapshot(details: true)?.snapshot.updatedAt == fixture.now)
     }
 
-    @Test(arguments: [(false, false, true), (false, true, true), (true, false, true), (false, false, false)])
+    @Test(arguments: [
+        (false, false, true, false),
+        (false, true, true, false),
+        (true, false, true, false),
+        (false, false, false, false),
+        (true, false, true, true),
+    ])
     func `completed current window publishes while historical catch up continues`(
-        scenario: (Bool, Bool, Bool)) async throws
+        scenario: (Bool, Bool, Bool, Bool)) async throws
     {
-        let (pendingCurrentWindow, staleParser, activeLookbackComplete) = scenario
+        let (pendingCurrentWindow, staleParser, activeLookbackComplete, metadataOnlyPending) = scenario
         let fixture = try ReadWorkFixture(fileCount: 2, rowsPerFile: 4)
         defer { fixture.remove() }
         var cache = fixture.canonical
@@ -221,12 +227,13 @@ extension CostUsageStoreReadWorkTests {
             legacyRecursivePendingRootPaths: activeLookbackComplete ? [] : roots,
             completedCurrentWindowRootPaths: roots,
             completedCurrentWindowFlatRootPaths: roots,
-            cacheWideMigrationQueueActive: true)
+            cacheWideMigrationQueueActive: metadataOnlyPending ? nil : true)
         CostUsageStoreAccess.replace(cacheRoot: fixture.env.cacheRoot, cache: cache, calendar: fixture.calendar)
 
         let status = await CostUsageFetcher(scannerOptions: fixture.options).codexScanCatchUpStatus()
         let cached = try #require(await fixture.cachedSnapshot())
-        let shouldPreservePrevious = pendingCurrentWindow || staleParser || !activeLookbackComplete
+        let shouldPreservePrevious = (pendingCurrentWindow && !metadataOnlyPending)
+            || staleParser || !activeLookbackComplete
 
         #expect(status.pending)
         #expect(cached.snapshot.historyCoverageIsEstablished)
