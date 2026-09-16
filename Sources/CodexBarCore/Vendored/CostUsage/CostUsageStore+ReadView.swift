@@ -70,6 +70,8 @@ struct CostUsageStoreReadView: Sendable {
         else { return false }
         let rootPaths = Set(roots.map(Self.resolvedCodexPath))
         guard Set(lookback.rootPaths) == rootPaths,
+              Set(lookback.completedRootPaths) == rootPaths,
+              lookback.legacyRecursivePendingRootPaths.isEmpty,
               Set(lookback.completedCurrentWindowRootPaths ?? []) == rootPaths,
               Set(lookback.completedCurrentWindowFlatRootPaths ?? []) == rootPaths
         else { return false }
@@ -117,7 +119,10 @@ struct CostUsageStoreReadView: Sendable {
         guard !self.historyCoverageIsEstablished(range: range, rootsFingerprint: rootsFingerprint) else {
             return nil
         }
-        CostUsageScanner.codexPreviousReport(cache: self.cache, range: range, rootsFingerprint: rootsFingerprint)
+        return CostUsageScanner.codexPreviousReport(
+            cache: self.cache,
+            range: range,
+            rootsFingerprint: rootsFingerprint)
     }
 
     private static func resolvedCodexPath(_ url: URL) -> String {

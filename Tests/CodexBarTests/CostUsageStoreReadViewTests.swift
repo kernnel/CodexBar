@@ -173,11 +173,11 @@ extension CostUsageStoreReadWorkTests {
         #expect(await fixture.cachedSnapshot(details: true)?.snapshot.updatedAt == fixture.now)
     }
 
-    @Test(arguments: [(false, false), (false, true), (true, false)])
+    @Test(arguments: [(false, false, true), (false, true, true), (true, false, true), (false, false, false)])
     func `completed current window publishes while historical catch up continues`(
-        scenario: (Bool, Bool)) async throws
+        scenario: (Bool, Bool, Bool)) async throws
     {
-        let (pendingCurrentWindow, staleParser) = scenario
+        let (pendingCurrentWindow, staleParser, activeLookbackComplete) = scenario
         let fixture = try ReadWorkFixture(fileCount: 2, rowsPerFile: 4)
         defer { fixture.remove() }
         var cache = fixture.canonical
@@ -216,8 +216,9 @@ extension CostUsageStoreReadWorkTests {
         cache.codexActiveLookbackState = CostUsageCodexActiveLookbackState(
             scanSinceKey: fixture.range.scanSinceKey,
             rootPaths: roots,
+            completedRootPaths: activeLookbackComplete ? roots : [],
             pendingFilePaths: [pendingPath],
-            legacyRecursivePendingRootPaths: roots,
+            legacyRecursivePendingRootPaths: activeLookbackComplete ? [] : roots,
             completedCurrentWindowRootPaths: roots,
             completedCurrentWindowFlatRootPaths: roots,
             cacheWideMigrationQueueActive: true)
@@ -225,11 +226,12 @@ extension CostUsageStoreReadWorkTests {
 
         let status = await CostUsageFetcher(scannerOptions: fixture.options).codexScanCatchUpStatus()
         let cached = try #require(await fixture.cachedSnapshot())
+        let shouldPreservePrevious = pendingCurrentWindow || staleParser || !activeLookbackComplete
 
         #expect(status.pending)
         #expect(cached.snapshot.historyCoverageIsEstablished)
-        #expect(cached.snapshot.last30DaysTokens == (pendingCurrentWindow || staleParser ? 13 : 52))
-        #expect((cached.staleSnapshotUpdatedAt != nil) == (pendingCurrentWindow || staleParser))
+        #expect(cached.snapshot.last30DaysTokens == (shouldPreservePrevious ? 13 : 52))
+        #expect((cached.staleSnapshotUpdatedAt != nil) == shouldPreservePrevious)
     }
 
     @Test
