@@ -89,7 +89,7 @@ struct UsageStoreCodexCostCatchUpTests {
         await task.value
         #expect(sleeps.count == 2)
         if mode == .automatic {
-            #expect(sleeps == [1800, 1800])
+            #expect(sleeps == [1998, 1800])
         } else {
             #expect(sleeps == [0, 0])
         }
@@ -319,10 +319,15 @@ struct UsageStoreCodexCostCatchUpTests {
         }
         var statusLoadCount = 0
         var advanceCount = 0
+        var completedSnapshotLoadCount = 0
         store._test_tokenUsageSnapshotLoaderOverride = { _, _, now, _, _ in
             Self.tokenSnapshot(cost: 1, now: now)
         }
-        store._test_cachedCodexTokenSnapshotLoaderOverride = { _, _, _ in nil }
+        store._test_cachedCodexTokenSnapshotLoaderOverride = { now, _, _ in
+            completedSnapshotLoadCount += 1
+            guard completedSnapshotLoadCount > 1 else { return nil }
+            return (Self.tokenSnapshot(cost: 1, now: now), now, nil)
+        }
         store._test_codexCostCatchUpStatusOverride = { _ in
             statusLoadCount += 1
             return CostUsageFetcher.CodexScanCatchUpStatus(
