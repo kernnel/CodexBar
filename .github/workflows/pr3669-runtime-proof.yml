@@ -12,6 +12,8 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
       - name: Select Xcode 26
         run: |
           for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
