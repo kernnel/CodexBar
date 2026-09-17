@@ -1,0 +1,39 @@
+name: PR 3669 runtime proof build
+
+on:
+  push:
+    branches: [ci/pr3669-runtime-proof]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select Xcode 26
+        run: |
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "$candidate/Contents/Developer"
+              break
+            fi
+          done
+          xcodebuild -version
+      - name: Verify source identity
+        run: |
+          git diff --exit-code HEAD^ -- . ':(exclude).github/workflows/pr3669-runtime-proof.yml'
+          git rev-parse HEAD^ | tee pr-source-commit.txt
+      - name: Package app
+        run: CODEXBAR_SIGNING=adhoc ./Scripts/package_app.sh release
+      - name: Archive app
+        run: ditto -c -k --sequesterRsrc --keepParent CodexBar.app CodexBar-PR3669-runtime-proof.zip
+      - name: Upload app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: CodexBar-PR3669-runtime-proof
+          path: |
+            CodexBar-PR3669-runtime-proof.zip
+            pr-source-commit.txt
+          retention-days: 3
