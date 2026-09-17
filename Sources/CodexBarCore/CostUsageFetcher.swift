@@ -680,6 +680,9 @@ public struct CostUsageFetcher: Sendable {
         // Keep a fallback detail read on the same validated connection.
         let store = CostUsageStore(cacheRoot: options.cacheRoot)
         var view = store.syncLoadCodexReadView(calendar: options.calendar, purpose: .status).scoped(to: roots)
+        if view.hasPendingScan {
+            view = store.syncLoadCodexReadView(calendar: options.calendar, purpose: .activity).scoped(to: roots)
+        }
         if view.previousReport(range: range, rootsFingerprint: rootsFingerprint) == nil {
             view = store.syncLoadCodexReadView(calendar: options.calendar, purpose: .report).scoped(to: roots)
         }
@@ -711,11 +714,6 @@ public struct CostUsageFetcher: Sendable {
         } else {
             await ModelsDevPricingPipeline.refreshIfNeeded(now: now, cacheRoot: cacheRoot, client: client)
         }
-    }
-
-    private struct ModelsDevPricingTarget: Hashable, Sendable {
-        let providerID: String
-        let modelID: String
     }
 
     private struct UnknownPricingRefreshRequest: Sendable {

@@ -48,7 +48,7 @@ extension CostUsageStoreReadWorkTests {
         #expect(result.snapshot.projects == expected.projects)
         #expect(result.snapshot.sessions == expected.sessions)
         // The metadata precheck and detail fallback both inspect presence without loading replay bodies.
-        #expect(reportWork.retryPresenceRows == 2)
+        #expect(reportWork.retryPresenceRows == 3)
         #expect(reportWork.usageRows == 8)
         #expect(reportWork.usageRowDecodeAttempts == 8)
         #expect(reportWork.usagePayloadBytes > 0)
@@ -56,7 +56,7 @@ extension CostUsageStoreReadWorkTests {
         #expect(reportWork.bufferedPayloadBytes == 0)
         #expect(reportWork.tokenSnapshotRows == 0)
         #expect(reportWork.accumulatorRows == 0)
-        #expect(reportWork.readViewConversions == 2)
+        #expect(reportWork.readViewConversions == 3)
         #expect(reportWork.integrityChecks == 1)
         #expect(reportWork.readViewConversionsInTransaction == 0)
         print("[cost-store-read-proof] malformed-replay pending=\(status.pending) " +
@@ -194,6 +194,7 @@ extension CostUsageStoreReadWorkTests {
         cache.files[historicalPath]?.days = [historicalDay: [ReadWorkFixture.model: [40, 8, 12]]]
         cache.files[historicalPath]?.codexRows = nil
         cache.files[historicalPath]?.codexStandardTokens = [historicalDay: [ReadWorkFixture.model: 52]]
+        cache.files[historicalPath]?.codexCostNanos = [historicalDay: [ReadWorkFixture.model: 4_000_000]]
         cache.days = [:]
         for usage in cache.files.values {
             CostUsageScanner.applyFileDays(cache: &cache, fileDays: usage.days, sign: 1)

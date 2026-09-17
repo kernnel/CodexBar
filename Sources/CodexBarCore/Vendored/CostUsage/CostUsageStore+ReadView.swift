@@ -4,9 +4,11 @@ import Foundation
 /// storage is private: omitted parser state must never be handed back to scanner persistence.
 struct CostUsageStoreReadView: Sendable {
     private let cache: CostUsageCache
+    private let purpose: CostUsageStoreReadPurpose
 
-    init(cache: CostUsageCache) {
+    init(cache: CostUsageCache, purpose: CostUsageStoreReadPurpose) {
         self.cache = cache
+        self.purpose = purpose
     }
 
     var roots: [String: Int64]? {
@@ -44,7 +46,7 @@ struct CostUsageStoreReadView: Sendable {
     }
 
     func scoped(to roots: [URL]) -> Self {
-        Self(cache: CostUsageScanner.codexCache(self.cache, scopedTo: roots))
+        Self(cache: CostUsageScanner.codexCache(self.cache, scopedTo: roots), purpose: self.purpose)
     }
 
     func windowExpandsCache(_ range: CostUsageScanner.CostUsageDayRange) -> Bool {
@@ -65,6 +67,21 @@ struct CostUsageStoreReadView: Sendable {
         let scoped = self.scoped(to: roots)
         guard scoped.hasPendingScan else { return true }
 
+        if let discovery = scoped.cache.codexSessionDiscovery,
+           !discovery.isComplete, !discovery.pendingSessionIds.isEmpty || discovery.headScan != nil
+        {
+            return false
+        }
+
+        // Omitted day maps and unfinished or unowned work cannot prove absence from this window.
+        guard scoped.purpose != .status,
+              scoped.cache.files.values.allSatisfy({ usage in
+                  usage.codexScanComplete == true && usage.codexCostCacheComplete == true
+                      && usage.hasCurrentCodexParser && !usage.hasBufferedCodexForkRetryLines
+                      && !CostUsageScanner.isUnresolvedMissingParentFork(usage)
+              })
+        else { return false }
+
         guard let lookback = self.cache.codexActiveLookbackState,
               lookback.scanSinceKey <= range.scanSinceKey
         else { return false }
@@ -83,7 +100,6 @@ struct CostUsageStoreReadView: Sendable {
         for path in lookback.pendingFilePaths {
             let resolvedPath = Self.resolvedCodexPath(URL(fileURLWithPath: path))
             guard let usage = filesByResolvedPath[resolvedPath] else { return false }
-            guard usage.hasCurrentCodexParser else { return false }
             if lookback.cacheWideMigrationQueueActive == true,
                usage.touchesCodexScanWindow(
                    sinceKey: range.scanSinceKey,
@@ -104,13 +120,7 @@ struct CostUsageStoreReadView: Sendable {
             }
         }
 
-        return !scoped.cache.files.values.contains { usage in
-            (usage.codexScanComplete == false || usage.hasBufferedCodexForkRetryLines)
-                && usage.touchesCodexScanWindow(
-                    sinceKey: range.scanSinceKey,
-                    untilKey: range.scanUntilKey,
-                    calendar: range.calendar)
-        }
+        return true
     }
 
     func previousReport(
@@ -169,7 +179,7 @@ struct CostUsageStoreReadView: Sendable {
     }
 }
 
-enum CostUsageStoreReadPurpose {
+enum CostUsageStoreReadPurpose: Sendable {
     case status
     /// Scoped token totals and coverage only; no per-event history for detailed reports.
     case activity
